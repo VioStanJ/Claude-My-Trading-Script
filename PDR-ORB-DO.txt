@@ -1,0 +1,221 @@
+//@version=6
+indicator("PDH & PDL + Daily Open", overlay = true,
+     max_lines_count  = 100,
+     max_labels_count = 100)
+
+// ─────────────────────────────────────────────
+// INPUTS — LEVELS
+// ─────────────────────────────────────────────
+grp_levels  = "═══ LEVELS ═══"
+show_pdh    = input.bool(true, "Show PDH",     group = grp_levels)
+show_pdl    = input.bool(true, "Show PDL",     group = grp_levels)
+show_fib    = input.bool(true, "Show 50% Mid", group = grp_levels)
+show_labels = input.bool(true, "Show Labels",  group = grp_levels)
+
+// ─────────────────────────────────────────────
+// INPUTS — DAILY OPEN
+// ─────────────────────────────────────────────
+grp_open    = "═══ DAILY OPEN ═══"
+show_dopen  = input.bool(true,  "Show Daily Open",        group = grp_open)
+col_dopen_bull = input.color(color.new(color.green, 0), "Above Open Color", group = grp_open)
+col_dopen_bear = input.color(color.new(color.red,   0), "Below Open Color", group = grp_open)
+dopen_width = input.int(2, "Daily Open Width", minval = 1, maxval = 4,      group = grp_open)
+show_dopen_label = input.bool(true, "Show Daily Open Label",                group = grp_open)
+
+// ─────────────────────────────────────────────
+// INPUTS — STYLE
+// ─────────────────────────────────────────────
+grp_style   = "═══ STYLE ═══"
+col_pdh     = input.color(color.new(color.green, 0),  "PDH Color", group = grp_style)
+col_pdl     = input.color(color.new(color.red,   0),  "PDL Color", group = grp_style)
+col_fib     = input.color(color.new(#B2B5BE,     0),  "50% Color", group = grp_style)
+lw_pdh      = input.int(1, "PDH Width", minval = 1, maxval = 4,    group = grp_style)
+lw_pdl      = input.int(1, "PDL Width", minval = 1, maxval = 4,    group = grp_style)
+lw_fib      = input.int(1, "50% Width", minval = 1, maxval = 4,    group = grp_style)
+
+// ─────────────────────────────────────────────
+// DAY CHANGE
+// ─────────────────────────────────────────────
+is_new_day = ta.change(time("D")) != 0
+
+// ─────────────────────────────────────────────
+// DAILY OPEN — True 9:30 AM ET RTH Open
+// Captures the OPEN price of the first 9:30 bar
+// NOT the pre-market wick — true session open
+// ─────────────────────────────────────────────
+bar_hour_do   = hour(time,   "America/New_York")
+bar_minute_do = minute(time, "America/New_York")
+is_930_bar    = bar_hour_do == 9 and bar_minute_do == 30
+
+var float daily_open = na
+
+if is_new_day
+    daily_open := na
+
+if is_930_bar and na(daily_open)
+    daily_open := open
+
+dopen_color = close >= daily_open ? col_dopen_bull : col_dopen_bear
+
+// ─────────────────────────────────────────────
+// PDH / PDL TRACKING — bar by bar
+// ─────────────────────────────────────────────
+var float pdh         = na
+var float pdl         = na
+var int   pdh_bar     = na
+var int   pdl_bar     = na
+var float day_high    = na
+var float day_low     = na
+var int   day_high_bar = na
+var int   day_low_bar  = na
+
+if is_new_day
+    pdh          := day_high
+    pdl          := day_low
+    pdh_bar      := day_high_bar
+    pdl_bar      := day_low_bar
+    day_high     := high
+    day_low      := low
+    day_high_bar := bar_index
+    day_low_bar  := bar_index
+else
+    if na(day_high) or high > day_high
+        day_high     := high
+        day_high_bar := bar_index
+    if na(day_low) or low < day_low
+        day_low      := low
+        day_low_bar  := bar_index
+
+fib_val = na(pdh) or na(pdl) ? na : (pdh + pdl) / 2
+
+// ─────────────────────────────────────────────
+// PDH / PDL LINES
+// ─────────────────────────────────────────────
+var line line_pdh = na
+var line line_pdl = na
+var line line_fib = na
+var label lbl_pdh = na
+var label lbl_pdl = na
+var label lbl_fib = na
+
+if is_new_day and not na(pdh) and not na(pdl)
+    line.delete(line_pdh)
+    line.delete(line_pdl)
+    line.delete(line_fib)
+    label.delete(lbl_pdh)
+    label.delete(lbl_pdl)
+    label.delete(lbl_fib)
+
+    if show_pdh
+        line_pdh := line.new(pdh_bar, pdh, bar_index, pdh,
+             color = col_pdh, width = lw_pdh, extend = extend.right)
+    if show_pdl
+        line_pdl := line.new(pdl_bar, pdl, bar_index, pdl,
+             color = col_pdl, width = lw_pdl, extend = extend.right)
+    if show_fib
+        line_fib := line.new(pdh_bar, fib_val, bar_index, fib_val,
+             color = col_fib, width = lw_fib,
+             style = line.style_dashed, extend = extend.right)
+
+    if show_labels
+        lbl_pdh := label.new(bar_index, pdh,
+             text      = "PDH  " + str.tostring(math.round(pdh     * 100) / 100),
+             style     = label.style_label_right,
+             color     = color.new(color.green, 15),
+             textcolor = color.white, size = size.small)
+        lbl_pdl := label.new(bar_index, pdl,
+             text      = "PDL  " + str.tostring(math.round(pdl     * 100) / 100),
+             style     = label.style_label_right,
+             color     = color.new(color.red,   15),
+             textcolor = color.white, size = size.small)
+        lbl_fib := label.new(bar_index, fib_val,
+             text      = "50%  " + str.tostring(math.round(fib_val * 100) / 100),
+             style     = label.style_label_right,
+             color     = color.new(color.gray,  15),
+             textcolor = color.white, size = size.small)
+
+// Pin labels to right edge
+atr_offset = ta.atr(14) * 0.1
+
+if not na(lbl_pdh) and not na(pdh)
+    label.set_x(lbl_pdh, bar_index)
+    label.set_y(lbl_pdh, pdh + atr_offset)
+if not na(lbl_pdl) and not na(pdl)
+    label.set_x(lbl_pdl, bar_index)
+    label.set_y(lbl_pdl, pdl + atr_offset)
+if not na(lbl_fib) and not na(fib_val)
+    label.set_x(lbl_fib, bar_index)
+    label.set_y(lbl_fib, fib_val + atr_offset)
+
+// ─────────────────────────────────────────────
+// DAILY OPEN LINE — Daily Open Label
+// ─────────────────────────────────────────────
+var line  line_dopen = na
+var label lbl_dopen  = na
+
+if is_new_day and show_dopen and not na(daily_open)
+    line.delete(line_dopen)
+    label.delete(lbl_dopen)
+
+    line_dopen := line.new(bar_index, daily_open, bar_index, daily_open,
+         color  = dopen_color,
+         width  = dopen_width,
+         style  = line.style_dotted,
+         extend = extend.right)
+
+    if show_dopen_label
+        lbl_dopen := label.new(bar_index, daily_open,
+             text      = "DO 9:30  " + str.tostring(math.round(daily_open * 100) / 100),
+             style     = label.style_label_right,
+             color     = color.new(color.blue, 15),
+             textcolor = color.white,
+             size      = size.small)
+
+// Update daily open line color dynamically (green/red based on price)
+if not na(line_dopen)
+    line.set_color(line_dopen, dopen_color)
+
+// Pin daily open label to right edge
+if not na(lbl_dopen) and not na(daily_open)
+    label.set_x(lbl_dopen, bar_index)
+    label.set_y(lbl_dopen, daily_open - atr_offset)
+
+// ─────────────────────────────────────────────
+// PLOT DAILY OPEN — circles style like original
+// ─────────────────────────────────────────────
+plot(show_dopen ? daily_open : na,
+     title     = "Daily Open",
+     color     = dopen_color,
+     linewidth = dopen_width,
+     style     = plot.style_circles)
+
+// ─────────────────────────────────────────────
+// INFO TABLE
+// ─────────────────────────────────────────────
+var table info = table.new(position.top_left, 2, 5,
+     bgcolor      = color.new(color.black, 80),
+     border_width = 1,
+     border_color = color.new(color.gray,  50))
+
+if barstate.islast
+    table.cell(info, 0, 0, "PDH",        text_color = color.gray,  text_size = size.small)
+    table.cell(info, 1, 0, not na(pdh)     ? str.tostring(math.round(pdh       * 100) / 100) : "—", text_color = color.green, text_size = size.small)
+    table.cell(info, 0, 1, "PDL",        text_color = color.gray,  text_size = size.small)
+    table.cell(info, 1, 1, not na(pdl)     ? str.tostring(math.round(pdl       * 100) / 100) : "—", text_color = color.red,   text_size = size.small)
+    table.cell(info, 0, 2, "50%",        text_color = color.gray,  text_size = size.small)
+    table.cell(info, 1, 2, not na(fib_val) ? str.tostring(math.round(fib_val   * 100) / 100) : "—", text_color = color.gray,  text_size = size.small)
+    table.cell(info, 0, 3, "DO 9:30",    text_color = color.gray,  text_size = size.small)
+    table.cell(info, 1, 3, not na(daily_open) ? str.tostring(math.round(daily_open * 100) / 100) : "—",
+         text_color = close >= daily_open ? color.green : color.red, text_size = size.small)
+    table.cell(info, 0, 4, "Range",      text_color = color.gray,  text_size = size.small)
+    table.cell(info, 1, 4, not na(pdh) and not na(pdl) ? str.tostring(math.round((pdh - pdl) * 100) / 100) : "—", text_color = color.white, text_size = size.small)
+
+// ─────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────
+alertcondition(ta.crossover(close,  pdh),       "Crossed Above PDH",        "Price crossed above PDH!")
+alertcondition(ta.crossunder(close, pdl),       "Crossed Below PDL",        "Price crossed below PDL!")
+alertcondition(ta.crossover(close,  fib_val),   "Crossed Above 50%",        "Price crossed above 50%!")
+alertcondition(ta.crossunder(close, fib_val),   "Crossed Below 50%",        "Price crossed below 50%!")
+alertcondition(ta.crossover(close,  daily_open),"Crossed Above Daily Open", "Price crossed above Daily Open!")
+alertcondition(ta.crossunder(close, daily_open),"Crossed Below Daily Open", "Price crossed below Daily Open!")
